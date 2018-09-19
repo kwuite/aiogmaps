@@ -24,6 +24,7 @@ class Client:
             loop = asyncio.get_event_loop()
 
         self.loop = loop
+        self.verify_ssl = verify_ssl
 
         if not key and not (client_secret and client_id):
             raise ValueError('Must provide API key or enterprise credentials '
@@ -36,18 +37,6 @@ class Client:
         self.client_id = client_id
         self.client_secret = client_secret
         self.request_timeout = request_timeout
-
-        if session is None:
-            session = aiohttp.ClientSession(
-                connector=aiohttp.TCPConnector(
-                    use_dns_cache=True,
-                    loop=loop,
-                    verify_ssl=verify_ssl,
-                )
-            )
-
-        self.session = session
-
         self.base_url = URL('https://maps.googleapis.com/')
         self._user_agent = 'AsyncGoogleGeoApiClientPython/{}'.format(
             __version__)
@@ -94,15 +83,22 @@ class Client:
             data = post_json
 
         try:
-            response = await self.session.request(
-                method,
-                base_url / url.lstrip('/'),
-                params=params,
-                data=data,
-                headers=self._headers,
-                timeout=self.request_timeout,
-                **kwargs,
-            )
+            async with aiohttp.ClientSession(
+                connector=aiohttp.TCPConnector(
+                    use_dns_cache=True,
+                    # loop=loop,
+                    verify_ssl=self.verify_ssl,
+                )
+                ) as session:
+                response = await session.request(
+                        method,
+                        base_url / url.lstrip('/'),
+                        params=params,
+                        data=data,
+                        headers=self._headers,
+                        timeout=self.request_timeout,
+                        **kwargs,
+                    )
         except aiohttp.ClientError as exc:
             logger.exception(exc, exc_info=exc)
             raise
@@ -136,15 +132,14 @@ class Client:
         raise googlemaps.exceptions.ApiError(api_status,
                                              body.get('error_message'))
 
-    async def close(self):
-        await self.session.close()
+    # async def close(self):
+    #     await self.session.close()
 
     async def __aenter__(self):
         return self
 
-    async def __aexit__(self, *exc_info):
-        await self.close()
-
+    # async def __aexit__(self, *exc_info):
+    #     await self.close()
 
 # Places API
 Client.place = place
